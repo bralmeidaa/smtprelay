@@ -1,0 +1,19 @@
+# Build artifacts
+/smtprelay
+/src.exe
+*.exe
+*.test
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus" },
+    "environmentName": { "value": "smtprelay-env" },
+    "containerAppName": { "value": "smtprelay" },
+    "containerImage": { "value": "docker.io/bralmeida/smtprelay:latest" },
+    "cpu": { "value": "0.25" },
+    "memory": { "value": "0.5Gi" },
+    "minReplicas": { "value": 0 },
+    "maxReplicas": { "value": 1 },
+    "smtpUpstreamHost": { "value": "smtps.uol.com.br" },
+    "smtpUpstreamPort": { "value": "587" },
+    "relayDomain": { "value": "smtps.bratech.me" },
+    "enableDedicatedEgress": { "value": false }
+  }
+}

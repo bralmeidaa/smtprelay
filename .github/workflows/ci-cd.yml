@@ -1,0 +1,88 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: docker.io/bralmeida/smtprelay
+
+jobs:
+  build-test:
+    name: Validate, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Validate (go vet)
+        run: go vet ./...
+
+      - name: Test (includes the open-relay proof)
+        run: go test ./... -v
+
+      - name: Security checks (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Build container image
+        run: docker build -t smtprelay:ci .
+
+  push:
+    name: Push image to Docker Hub
+    needs: build-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Azure (Modo A)
+    needs: push
+    runs-on: ubuntu-latest
+    # Disabled by default: requires AZURE_CREDENTIALS, AZURE_RESOURCE_GROUP,
+    # RELAY_USER, RELAY_PASSWORD, TLS_CERT_PEM and TLS_KEY_PEM secrets to be
+    # configured in the repository. Once they are, replace this with
+    # `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.
+    # See docs/operations.md and docs/security.md.
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Bicep (Modo A)
+        run: |
+          az deployment group create \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/parameters/economic.parameters.json \
+            --parameters containerImage=${{ env.IMAGE }}:${{ github.sha }} \
+                         relayUser="${{ secrets.RELAY_USER }}" \
+                         relayPassword="${{ secrets.RELAY_PASSWORD }}" \
+                         tlsCertPem="${{ secrets.TLS_CERT_PEM }}" \
+                         tlsKeyPem="${{ secrets.TLS_KEY_PEM }}"

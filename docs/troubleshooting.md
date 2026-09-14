@@ -1,0 +1,79 @@
+# Troubleshooting
+
+## Cliente não consegue autenticar
+
+- Confirmar que o app de e-mail está usando **exatamente** o e-mail e a
+  senha reais da conta `@uol.com.br` (`RELAY_USER`/`RELAY_PASSWORD` no
+  relay devem bater com o que o cliente digita).
+- Confirmar que o cliente está usando STARTTLS na 587 ou TLS
+  implícito/SSL na 465 — o relay rejeita `AUTH` em texto claro
+  (`AllowInsecureAuth: false`), então um cliente configurado sem TLS trava
+  silenciosamente ou recebe erro genérico de autenticação.
+- Ver logs (`az containerapp logs show`) por `"authentication failed"` —
+  o campo `user` vem mascarado (`c****e@uol.com.br`), mas confirma que a
+  tentativa chegou no relay.
+
+## Mensagens não chegam ao destinatário
+
+1. Checar `/readyz` — se estiver `503`, a UOL está inacessível
+   (rede/upstream fora do ar), não é bug do relay.
+2. Ver logs por `"upstream relay failed"` — a mensagem de erro
+   (`upstream dial`, `upstream auth`, `upstream starttls`, etc.) indica em
+   qual etapa da conexão com a UOL falhou.
+3. Se for `upstream auth`: a senha configurada no relay pode estar
+   desatualizada em relação à senha real da conta UOL — ver
+   [operations.md](operations.md#rotação-de-secrets).
+
+## Erro "553 sender address does not match authenticated account"
+
+Comportamento esperado (ver [security.md](security.md)) — o cliente está
+tentando enviar com um remetente diferente do e-mail com que se
+autenticou. Corrigir o campo "De" no app de e-mail para bater com a conta
+configurada.
+
+## Erro "452 message rate limit exceeded" / "421 too many connections"
+
+Os limites padrão (`RATE_LIMIT_CONN_PER_MINUTE=30`,
+`RATE_LIMIT_MSGS_PER_HOUR=200`) são proporcionais a ~4 usuários de baixo
+volume — se isso disparar em uso normal, os valores provavelmente estão
+baixos demais para o padrão real de uso; ajustar em
+`infra/modules/containerapp.bicep` (ou via env var) e reimplantar.
+
+## Certificado TLS expirado
+
+Esta versão **não automatiza renovação** do certificado de
+`smtps.bratech.me` (ver [security.md](security.md)). Sintoma: clientes
+passam a rejeitar a conexão TLS com erro de certificado expirado. Fix:
+gerar/renovar o certificado, atualizar os secrets `tls-cert`/`tls-key`
+(ver [operations.md](operations.md#rotação-de-secrets)) e reiniciar a
+revisão. **Ação pendente**: definir um processo automatizado (ex.:
+cron/pipeline de renovação) antes de considerar isso pronto para produção
+de longo prazo — ver [rollback.md](rollback.md) para o que fazer se um
+deploy de certificado quebrado for parar em produção.
+
+## O deploy do Bicep falha com erro de ingress/VNet
+
+A arquitetura depende de um ambiente Container Apps "workload profiles"
+com VNet integrada (ver [architecture.md](architecture.md)) — esse é o
+ponto do template com maior chance de precisar de ajuste no primeiro
+deploy real, já que não foi possível validar contra uma assinatura Azure
+real durante a implementação (só compilação/lint local do Bicep). Se o
+deploy falhar:
+
+1. Conferir a versão da API (`Microsoft.App/managedEnvironments@...`,
+   `Microsoft.App/containerApps@...`) contra a mais recente disponível na
+   região.
+2. Conferir o tamanho mínimo exigido para a subnet de infraestrutura
+   (`infraSubnetAddressPrefix` em `infra/modules/networking.bicep`) — a
+   documentação da Azure já mudou esse requisito mais de uma vez.
+3. Reportar o erro exato — provavelmente é um ajuste pontual no Bicep, não
+   um problema de arquitetura.
+
+## Container reinicia em loop
+
+Não deve acontecer por causa da UOL estar fora do ar (ver
+[operations.md](operations.md#health-checks-e-por-que-uma-queda-da-uol-não-derruba-o-relay)).
+Se acontecer mesmo assim, checar `/healthz` diretamente e os logs de
+inicialização — a causa mais provável é `RELAY_USER`/`RELAY_PASSWORD` ou
+`TLS_CERT_FILE`/`TLS_KEY_FILE` ausentes ou inválidos, que fazem o processo
+sair com código 1 logo no start (`src/relay/run.go`).
