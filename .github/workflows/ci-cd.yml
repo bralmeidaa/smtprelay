@@ -67,14 +67,12 @@ jobs:
     name: Deploy to Azure (Modo A)
     needs: push
     runs-on: ubuntu-latest
-    # Disabled by default: requires the AZURE_CLIENT_ID / AZURE_TENANT_ID /
-    # AZURE_SUBSCRIPTION_ID repo variables (not secrets -- an OIDC federated
-    # credential is what actually authorizes this, not a stored value) plus
-    # the AZURE_RESOURCE_GROUP, RELAY_USER, RELAY_PASSWORD, TLS_CERT_PEM and
-    # TLS_KEY_PEM secrets. Once they're all configured, replace this with
-    # `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.
-    # See docs/operations.md and docs/security.md.
-    if: false
+    # Requires the AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+    # repo variables (OIDC federated credential authorizes this, not a
+    # stored secret) plus the AZURE_RESOURCE_GROUP, RELAY_USER,
+    # RELAY_PASSWORD, TLS_CERT_PEM and TLS_KEY_PEM secrets -- all confirmed
+    # configured. See docs/operations.md and docs/security.md.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       id-token: write # required for OIDC federation with Azure AD
       contents: read
