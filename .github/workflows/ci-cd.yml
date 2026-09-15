@@ -70,8 +70,9 @@ jobs:
     # Requires the AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
     # repo variables (OIDC federated credential authorizes this, not a
     # stored secret) plus the AZURE_RESOURCE_GROUP, RELAY_USER,
-    # RELAY_PASSWORD, TLS_CERT_PEM and TLS_KEY_PEM secrets -- all confirmed
-    # configured. See docs/operations.md and docs/security.md.
+    # RELAY_PASSWORD, TLS_CERT_PEM, TLS_KEY_PEM, NAMECOM_USERNAME and
+    # NAMECOM_API_TOKEN secrets -- all confirmed configured. See
+    # docs/operations.md and docs/security.md.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       id-token: write # required for OIDC federation with Azure AD
@@ -89,6 +90,7 @@ jobs:
       - name: Deploy Bicep (Modo A)
         run: |
           az deployment group create \
+            --name main \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --template-file infra/main.bicep \
             --parameters infra/parameters/economic.parameters.json \
@@ -97,3 +99,42 @@ jobs:
                          relayPassword="${{ secrets.RELAY_PASSWORD }}" \
                          tlsCertPem="${{ secrets.TLS_CERT_PEM }}" \
                          tlsKeyPem="${{ secrets.TLS_KEY_PEM }}"
+
+      - name: Point DNS at the deployed Container App (Name.com CNAME)
+        # TCP ingress has no "custom domain" feature (that's HTTP-ingress
+        # only -- it needs Host-header/SNI routing and an Azure-managed
+        # cert, neither of which applies here since we route by port and
+        # terminate TLS ourselves). A CNAME straight to the app's default
+        # FQDN is all a TCP-ingress app needs; using the FQDN instead of a
+        # bare IP means this doesn't break if the environment's IP ever
+        # changes.
+        env:
+          NAMECOM_USERNAME: ${{ secrets.NAMECOM_USERNAME }}
+          NAMECOM_API_TOKEN: ${{ secrets.NAMECOM_API_TOKEN }}
+        run: |
+          ZONE="bratech.me"
+          HOST="smtps"
+
+          FQDN=$(az deployment group show \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --name main \
+            --query properties.outputs.containerAppFqdn.value -o tsv)
+
+          EXISTING_ID=$(curl -sf -u "$NAMECOM_USERNAME:$NAMECOM_API_TOKEN" \
+            "https://api.name.com/v4/domains/$ZONE/records" \
+            | jq -r --arg host "$HOST" \
+              '.records[]? | select(.host == $host and .type == "CNAME") | .id' \
+            | head -1)
+
+          BODY=$(jq -n --arg host "$HOST" --arg answer "$FQDN" \
+            '{host: $host, type: "CNAME", answer: $answer, ttl: 300}')
+
+          if [ -n "$EXISTING_ID" ]; then
+            curl -sf -u "$NAMECOM_USERNAME:$NAMECOM_API_TOKEN" -X PUT \
+              "https://api.name.com/v4/domains/$ZONE/records/$EXISTING_ID" \
+              -H "Content-Type: application/json" -d "$BODY"
+          else
+            curl -sf -u "$NAMECOM_USERNAME:$NAMECOM_API_TOKEN" -X POST \
+              "https://api.name.com/v4/domains/$ZONE/records" \
+              -H "Content-Type: application/json" -d "$BODY"
+          fi

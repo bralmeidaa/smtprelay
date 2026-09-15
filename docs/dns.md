@@ -4,18 +4,25 @@
 
 `smtps.bratech.me` — domínio hospedado no Name.com.
 
-Depois do primeiro deploy, criar um registro `CNAME` (ou `A`, se preferir
-um IP fixo) apontando `smtps.bratech.me` para o FQDN público que o
-Container App expõe (saída `containerAppFqdn` do `infra/main.bicep`).
+Automatizado: o step "Point DNS at the deployed Container App" em
+[`ci-cd.yml`](../.github/workflows/ci-cd.yml) roda depois de cada deploy
+bem-sucedido, pega o FQDN público do Container App (saída
+`containerAppFqdn` do `infra/main.bicep`) e cria/atualiza um registro
+`CNAME` de `smtps` → esse FQDN via API do Name.com (v4, mesmas
+credenciais `NAMECOM_USERNAME`/`NAMECOM_API_TOKEN` usadas pro
+`renew-cert.yml`). Não precisa mexer manualmente no DNS depois de um
+deploy.
 
-**Pendente de validação real**: como o Container Apps não termina TLS para
-ingress TCP puro, o binding de domínio customizado usado normalmente para
-apps HTTP (`az containerapp hostname add` + certificado gerenciado) não se
-aplica da mesma forma aqui — o registro DNS só precisa apontar para o
-FQDN/IP do Container App; o TLS de `smtps.bratech.me` é resolvido pelo
-certificado carregado dentro do próprio binário (ver
-[security.md](security.md)). Confirmar o FQDN/IP exato exposto pelo modo
-TCP ingress no primeiro deploy real e ajustar este documento.
+**Confirmado**: `az containerapp hostname bind`/"custom domains" é uma
+feature de ingress **HTTP** (SNI + certificado gerenciado pela Azure) —
+não se aplica a ingress TCP puro como o nosso. Pra TCP, o CNAME sozinho
+já é suficiente; o TLS de `smtps.bratech.me` continua sendo resolvido
+inteiramente pelo certificado carregado dentro do próprio binário (ver
+[security.md](security.md)), nunca pela Azure.
+
+Por que CNAME e não `A` com IP fixo: o FQDN do Container App não muda
+mesmo que a Azure troque o IP por baixo dos panos — um registro `A`
+hardcoded quebraria nesse cenário.
 
 ## Hostname upstream (UOL)
 

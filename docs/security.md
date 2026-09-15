@@ -53,7 +53,10 @@ justamente o que não depende de nenhuma porta do relay estar aberta.
 
 [`.github/workflows/renew-cert.yml`](../.github/workflows/renew-cert.yml)
 automatiza isso, rodando duas vezes por mês (bem dentro da validade de 90
-dias de um certificado Let's Encrypt):
+dias de um certificado Let's Encrypt) **e também logo depois de todo
+deploy bem-sucedido** (`workflow_run` disparado pelo `ci-cd.yml`) — assim
+o relay nunca fica rodando com o certificado autoassinado de bootstrap por
+mais do que o tempo de um deploy:
 
 1. `lego --dns namedotcom` cria um registro `TXT` temporário em
    `_acme-challenge.smtps.bratech.me` via API do Name.com para provar

@@ -21,6 +21,13 @@ on:
   schedule:
     - cron: '0 3 1,15 * *' # twice a month -- comfortable margin before the 90-day expiry
   workflow_dispatch: {}
+  workflow_run:
+    # Fires right after a successful deploy, so the relay gets its real
+    # Let's Encrypt cert immediately instead of running on the bootstrap
+    # self-signed one for up to ~15 days until the next scheduled run.
+    workflows: ['CI/CD']
+    types: [completed]
+    branches: [main]
 
 permissions:
   id-token: write # required for OIDC federation with Azure AD
@@ -28,6 +35,9 @@ permissions:
 
 jobs:
   renew:
+    # Only skip when explicitly triggered by a CI/CD run that failed (e.g.
+    # tests or the deploy itself failed) -- schedule/manual runs always go.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     strategy:
       # One domain failing to renew (e.g. a propagation timeout) shouldn't

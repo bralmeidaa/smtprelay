@@ -113,25 +113,41 @@ Modo B (IP dedicado, custo real — ver [docs/cost.md](docs/cost.md)).
 
 ## Status / pendências conhecidas
 
-Implementado e testado nesta sessão: código Go completo (11 cenários de
-teste passando), Dockerfile, Bicep dos dois modos (compila limpo com
-`az bicep build`), pipeline de CI/CD, documentação.
+**Deployado e rodando de verdade** (2026-09-15, Brazil South, Modo A) —
+não é mais só teoria/lint local. Nessa sessão:
 
-**Ainda não validado contra uma assinatura Azure real** (nenhum deploy foi
-executado — isso tem custo e requer aprovação explícita):
-
-- O template Bicep nunca rodou um `az deployment group create` de
-  verdade. A sintaxe está correta e os nomes de propriedade foram
-  conferidos contra a documentação oficial (ingress TCP, workload
-  profiles, VNet), mas só um deploy real confirma que fecha ponta a
-  ponta — ver [docs/troubleshooting.md](docs/troubleshooting.md#o-deploy-do-bicep-falha-com-erro-de-ingressvnet).
-- Renovação do certificado TLS do lado cliente (`smtps.bratech.me`) está
-  automatizada via
-  [`.github/workflows/renew-cert.yml`](.github/workflows/renew-cert.yml)
-  (Let's Encrypt/ACME, DNS-01 via Name.com, suporta múltiplos
-  domínios/Container Apps na mesma matrix) — ver
+- Pipeline completo verde ponta a ponta: build, testes, `govulncheck`,
+  build/push da imagem pro Docker Hub, deploy do Bicep, renovação do
+  certificado real via Let's Encrypt e criação automática do DNS.
+- Três problemas reais só apareceram no deploy de verdade (não tinha como
+  prever por lint/documentação sozinha) e foram corrigidos:
+  - Subnet da infra precisa de delegação explícita pro serviço
+    `Microsoft.App/environments` — ver
+    [docs/troubleshooting.md](docs/troubleshooting.md#o-deploy-do-bicep-falha-com-erro-de-ingressvnet).
+  - East US estava sem capacidade de AKS pra novos ambientes
+    Container Apps workload-profiles (`AKSCapacityHeavyUsage`) — trocado
+    o default pra Brazil South, com preços revalidados em
+    [docs/cost.md](docs/cost.md).
+  - `govulncheck` exige Go 1.26+ pra instalar, e o workflow tinha
+    `go-version: '1.23'` fixo — trocado pra `'stable'`.
+- Renovação do certificado TLS
+  ([`.github/workflows/renew-cert.yml`](.github/workflows/renew-cert.yml),
+  Let's Encrypt via DNS-01 no Name.com, suporta múltiplos
+  domínios/Container Apps na mesma matrix) já rodou com sucesso e
+  substituiu o certificado autoassinado de bootstrap pelo real. Também
+  dispara automaticamente logo depois de todo deploy bem-sucedido
+  (`workflow_run`), além do agendamento quinzenal — ver
   [docs/security.md](docs/security.md#emissão-e-renovação-lets-encrypt-via-acme).
-  Ainda não rodou de verdade (depende dos secrets `NAMECOM_*` e
-  `LETSENCRYPT_EMAIL`, e do OIDC do Azure já configurado).
-- O job `deploy` do CI/CD está desabilitado (`if: false`) até os secrets
-  do Azure serem configurados no repositório.
+- DNS (`smtps.bratech.me` → FQDN do Container App) também é automático,
+  criado/atualizado a cada deploy via API do Name.com — ver
+  [docs/dns.md](docs/dns.md). Confirmado que "custom domains" do
+  Container Apps não se aplica a ingress TCP (é feature só de HTTP
+  ingress), então não há nada a configurar nesse sentido.
+
+Ainda pendente:
+
+- Teste funcional ponta a ponta com um cliente de e-mail real (Outlook/
+  Thunderbird/app do celular) apontando pra `smtps.bratech.me` — o que foi
+  validado até aqui é a infraestrutura subindo e o certificado sendo
+  aplicado, não uma sessão SMTP real de um cliente de e-mail de verdade.
+- Modo B (NAT Gateway) nunca foi deployado, só o Modo A.
