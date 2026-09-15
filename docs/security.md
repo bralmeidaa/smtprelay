@@ -45,12 +45,44 @@ Apps não termina TLS para ingress TCP puro (isso só existe para ingress
 HTTP), então **o TLS de `smtps.bratech.me` é responsabilidade do próprio
 binário**, não da plataforma.
 
-**Pendente de validação real**: a renovação desse certificado (ex.: Let's
-Encrypt/ACME automatizado vs. renovação manual e re-deploy do secret) não
-foi implementada nesta primeira versão — está fora do escopo do código,
-mas precisa de um processo definido antes de produção. Ver
-[troubleshooting.md](troubleshooting.md) e o item correspondente em
-[operations.md](operations.md).
+### Emissão e renovação (Let's Encrypt via ACME)
+
+Como o relay só expõe TCP puro (587/465, sem HTTP ingress), os desafios
+ACME `HTTP-01` e `TLS-ALPN-01` não se aplicam — só `DNS-01` funciona, e é
+justamente o que não depende de nenhuma porta do relay estar aberta.
+
+[`.github/workflows/renew-cert.yml`](../.github/workflows/renew-cert.yml)
+automatiza isso, rodando duas vezes por mês (bem dentro da validade de 90
+dias de um certificado Let's Encrypt):
+
+1. `lego --dns namedotcom` cria um registro `TXT` temporário em
+   `_acme-challenge.smtps.bratech.me` via API do Name.com para provar
+   posse do domínio, e emite um certificado novo.
+2. `az containerapp secret set` atualiza os secrets `tls-cert`/`tls-key`
+   do Container App com o novo par.
+3. A revisão ativa é reiniciada para carregar o certificado novo (se não
+   houver réplica rodando — `minReplicas: 0` — o próximo cold start já
+   nasce com o certificado atualizado, sem necessidade de restart).
+
+Como o DNS-01 não depende de estado anterior, o workflow simplesmente
+emite um certificado **novo** a cada execução, em vez de tentar rastrear
+"renovar só se necessário" entre execuções efêmeras do GitHub Actions —
+bem abaixo do limite de rate limit da Let's Encrypt nessa frequência.
+
+Requer os secrets `NAMECOM_USERNAME`, `NAMECOM_API_TOKEN` (gerados em
+Name.com → Account Settings → API) e `LETSENCRYPT_EMAIL`, além das
+variables `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`
+(OIDC) já usadas no deploy.
+
+**Multi-domínio**: o workflow roda como uma matrix — cada domínio do
+Name.com que precisar de certificado é uma entrada em `matrix.site`
+(`domain`, `containerApp`, `resourceGroup`), não um workflow separado. O
+nome do resource group e do Container App não são secret (só nomes), por
+isso ficam direto na matrix. Isso só serve enquanto todos os domínios
+estiverem na mesma conta Name.com e na mesma assinatura/identidade Azure
+que os secrets/variables acima autorizam — um domínio que precise de outra
+conta Name.com ou outra assinatura Azure não cabe nesse modelo de
+credenciais compartilhadas e exigiria secrets próprios.
 
 ## Credenciais e secrets
 

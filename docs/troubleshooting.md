@@ -41,15 +41,21 @@ baixos demais para o padrão real de uso; ajustar em
 
 ## Certificado TLS expirado
 
-Esta versão **não automatiza renovação** do certificado de
-`smtps.bratech.me` (ver [security.md](security.md)). Sintoma: clientes
-passam a rejeitar a conexão TLS com erro de certificado expirado. Fix:
-gerar/renovar o certificado, atualizar os secrets `tls-cert`/`tls-key`
-(ver [operations.md](operations.md#rotação-de-secrets)) e reiniciar a
-revisão. **Ação pendente**: definir um processo automatizado (ex.:
-cron/pipeline de renovação) antes de considerar isso pronto para produção
-de longo prazo — ver [rollback.md](rollback.md) para o que fazer se um
-deploy de certificado quebrado for parar em produção.
+A renovação é automática via
+[`.github/workflows/renew-cert.yml`](../.github/workflows/renew-cert.yml)
+(ver [security.md](security.md#emissão-e-renovação-lets-encrypt-via-acme)),
+rodando duas vezes por mês. Se mesmo assim um cliente rejeitar a conexão
+TLS por certificado expirado:
+
+1. Checar as execuções do workflow em Actions — falha mais provável é
+   `NAMECOM_API_TOKEN` expirado/revogado ou o registro `TXT` do desafio
+   não propagando a tempo (`NAMECOM_PROPAGATION_TIMEOUT`).
+2. Rodar o workflow manualmente (`workflow_dispatch`) para forçar uma
+   renovação imediata.
+3. Se precisar de um certificado emergencial sem esperar o workflow:
+   gerar manualmente (`lego` local ou qualquer cliente ACME com DNS-01) e
+   atualizar os secrets `tls-cert`/`tls-key` na mão (ver
+   [operations.md](operations.md#rotação-de-secrets)).
 
 ## O deploy do Bicep falha com erro de ingress/VNet
 

@@ -125,7 +125,13 @@ executado — isso tem custo e requer aprovação explícita):
   conferidos contra a documentação oficial (ingress TCP, workload
   profiles, VNet), mas só um deploy real confirma que fecha ponta a
   ponta — ver [docs/troubleshooting.md](docs/troubleshooting.md#o-deploy-do-bicep-falha-com-erro-de-ingressvnet).
-- Renovação do certificado TLS do lado cliente (`smtps.bratech.me`) não
-  está automatizada — ver [docs/security.md](docs/security.md#certificado-do-relay).
+- Renovação do certificado TLS do lado cliente (`smtps.bratech.me`) está
+  automatizada via
+  [`.github/workflows/renew-cert.yml`](.github/workflows/renew-cert.yml)
+  (Let's Encrypt/ACME, DNS-01 via Name.com, suporta múltiplos
+  domínios/Container Apps na mesma matrix) — ver
+  [docs/security.md](docs/security.md#emissão-e-renovação-lets-encrypt-via-acme).
+  Ainda não rodou de verdade (depende dos secrets `NAMECOM_*` e
+  `LETSENCRYPT_EMAIL`, e do OIDC do Azure já configurado).
 - O job `deploy` do CI/CD está desabilitado (`if: false`) até os secrets
   do Azure serem configurados no repositório.

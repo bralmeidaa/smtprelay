@@ -18,7 +18,13 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          # 'stable' rather than pinning '1.23': go.mod's `go 1.23` is only
+          # the minimum language version our code needs (a newer toolchain
+          # builds it fine, confirmed locally with go1.27) -- but
+          # golang.org/x/vuln/cmd/govulncheck (installed below) requires Go
+          # 1.26+ to build at all. Pinning too low here broke CI without
+          # touching any actual vulnerability.
+          go-version: 'stable'
 
       - name: Validate (go vet)
         run: go vet ./...
@@ -61,19 +67,26 @@ jobs:
     name: Deploy to Azure (Modo A)
     needs: push
     runs-on: ubuntu-latest
-    # Disabled by default: requires AZURE_CREDENTIALS, AZURE_RESOURCE_GROUP,
-    # RELAY_USER, RELAY_PASSWORD, TLS_CERT_PEM and TLS_KEY_PEM secrets to be
-    # configured in the repository. Once they are, replace this with
+    # Disabled by default: requires the AZURE_CLIENT_ID / AZURE_TENANT_ID /
+    # AZURE_SUBSCRIPTION_ID repo variables (not secrets -- an OIDC federated
+    # credential is what actually authorizes this, not a stored value) plus
+    # the AZURE_RESOURCE_GROUP, RELAY_USER, RELAY_PASSWORD, TLS_CERT_PEM and
+    # TLS_KEY_PEM secrets. Once they're all configured, replace this with
     # `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.
     # See docs/operations.md and docs/security.md.
     if: false
+    permissions:
+      id-token: write # required for OIDC federation with Azure AD
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure login
+      - name: Azure login (OIDC, no stored secret)
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy Bicep (Modo A)
         run: |

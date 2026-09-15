@@ -1,0 +1,93 @@
+name: Renew TLS certificate
+
+# The relay is TCP-only (587/465, no HTTP ingress), so HTTP-01 and
+# TLS-ALPN-01 ACME challenges don't apply. DNS-01 via Name.com's API is the
+# only fit -- it doesn't need any port open on the relay at all. Since
+# Let's Encrypt certs are free and DNS-01 doesn't care about existing
+# state, this just re-issues a fresh 90-day cert every run rather than
+# tracking renewal state across ephemeral runners (well under Let's
+# Encrypt's rate limits at this schedule). See docs/security.md.
+#
+# Multi-domain: each entry in the `site` matrix below is one Name.com
+# domain -> one Container App. Add a site by adding a matrix entry -- no
+# other change needed, as long as it's a domain in the SAME Name.com
+# account and the SAME Azure subscription/resource group access as the
+# shared credentials below. A future site that needs a different Name.com
+# account or a different Azure subscription/SPN doesn't fit this shared-
+# credentials shape and needs its own job (or its own secrets referenced
+# per matrix entry instead of the shared ones used here).
+
+on:
+  schedule:
+    - cron: '0 3 1,15 * *' # twice a month -- comfortable margin before the 90-day expiry
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for OIDC federation with Azure AD
+  contents: read
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    strategy:
+      # One domain failing to renew (e.g. a propagation timeout) shouldn't
+      # block the others.
+      fail-fast: false
+      matrix:
+        site:
+          - domain: smtps.bratech.me
+            containerApp: smtprelay # must match infra/parameters/*.parameters.json
+            resourceGroup: smtprelay-rg # not secret -- an Azure RG name, adjust to the real one
+          # - domain: smtps.outrocliente.com.br
+          #   containerApp: smtprelay-outrocliente
+          #   resourceGroup: outrocliente-rg
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable' # `go install lego@latest` may need newer than go.mod's minimum -- see ci-cd.yml
+
+      - name: Install lego
+        run: go install github.com/go-acme/lego/v4/cmd/lego@latest
+
+      - name: Request certificate (DNS-01 via Name.com)
+        env:
+          NAMECOM_USERNAME: ${{ secrets.NAMECOM_USERNAME }}
+          NAMECOM_API_TOKEN: ${{ secrets.NAMECOM_API_TOKEN }}
+        run: |
+          ~/go/bin/lego \
+            --accept-tos \
+            --email "${{ secrets.LETSENCRYPT_EMAIL }}" \
+            --dns namedotcom \
+            --domains "${{ matrix.site.domain }}" \
+            run
+
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update Container App TLS secrets
+        run: |
+          az containerapp secret set \
+            --name "${{ matrix.site.containerApp }}" \
+            --resource-group "${{ matrix.site.resourceGroup }}" \
+            --secrets tls-cert="$(cat ".lego/certificates/${{ matrix.site.domain }}.crt")" \
+                      tls-key="$(cat ".lego/certificates/${{ matrix.site.domain }}.key")"
+
+      - name: Restart the active revision so it picks up the new cert
+        run: |
+          REVISION=$(az containerapp revision list \
+            --name "${{ matrix.site.containerApp }}" \
+            --resource-group "${{ matrix.site.resourceGroup }}" \
+            --query "[?properties.active].name | [0]" -o tsv)
+          if [ -n "$REVISION" ]; then
+            az containerapp revision restart \
+              --name "${{ matrix.site.containerApp }}" \
+              --resource-group "${{ matrix.site.resourceGroup }}" \
+              --revision "$REVISION"
+          fi
+          # If minReplicas is 0 and nothing is currently running, there's
+          # nothing to restart -- the next cold start reads the updated
+          # secret automatically.
