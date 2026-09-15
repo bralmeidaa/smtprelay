@@ -17,7 +17,7 @@
 targetScope = 'resourceGroup'
 
 @description('Azure region for every resource.')
-param location string = 'eastus'
+param location string = 'brazilsouth'
 
 @description('Name of the Container Apps environment.')
 param environmentName string

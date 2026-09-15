@@ -11,6 +11,17 @@ em vez de `smtp(s).uol.com.br`, usando as **mesmas credenciais** da conta
 UOL. O relay autentica a sessão do cliente, e então abre uma nova conexão
 autenticada e criptografada até a UOL para entregar a mensagem.
 
+## Região: Brazil South (não East US)
+
+O plano original fixava East US. Trocado para **Brazil South** depois de
+um deploy real falhar com `AKSCapacityHeavyUsage` — a Azure estava sem
+capacidade de AKS pra provisionar novos ambientes Container Apps
+workload-profiles em East US (2026-09). Brazil South também tem a
+vantagem de latência mais baixa até a UOL e o cliente, que são
+brasileiros — o East US original não tinha uma razão de negócio específica
+por trás, só era o exemplo do plano. Confirmado que Brazil South suporta
+workload profiles. Custos em [cost.md](cost.md) já refletem essa região.
+
 ## Por que o VNet é obrigatório nos dois modos
 
 O plano original previa VNet apenas no Modo B (para o NAT Gateway). A
@@ -42,7 +53,7 @@ flowchart LR
         MailApp["App de e-mail\n(mesma senha da UOL)"]
     end
 
-    subgraph Azure["Azure — East US"]
+    subgraph Azure["Azure — Brazil South"]
         subgraph VNet["VNet (obrigatória p/ ingress TCP)"]
             subgraph Env["Container Apps Environment\n(workload profile: Consumption)"]
                 Relay["smtprelay\nminReplicas 0 / maxReplicas 1\nTLS termina aqui (Go)"]
@@ -78,7 +89,7 @@ flowchart LR
         MailApp["App de e-mail\n(mesma senha da UOL)"]
     end
 
-    subgraph Azure["Azure — East US"]
+    subgraph Azure["Azure — Brazil South"]
         subgraph VNet["VNet"]
             subgraph Env["Container Apps Environment\n(workload profile: Consumption)"]
                 Relay["smtprelay\nminReplicas 0 / maxReplicas 1"]

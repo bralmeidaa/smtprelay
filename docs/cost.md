@@ -1,8 +1,10 @@
 # Custo
 
 Todos os valores abaixo vêm da
-[Azure Retail Prices API](https://prices.azure.com/api/retail/prices) em
-2026-09-14 (região `eastus`, exceto onde indicado) — não são estimativas
+[Azure Retail Prices API](https://prices.azure.com/api/retail/prices),
+consultados em 2026-09-14/15 para a região **`brazilsouth`** (trocada de
+East US depois de um deploy real esbarrar em falta de capacidade de AKS
+lá — ver [architecture.md](architecture.md)) — não são estimativas
 inventadas. Ainda assim, **confirmar na Calculadora de Preços da Azure**
 antes de decidir com o cliente, já que preços mudam.
 
@@ -49,10 +51,12 @@ Componentes adicionais sobre o Modo A:
 | IP público estático (Standard) | $0.005/hora | ~$3.65 |
 | **Total Modo B** | | **~$36–38/mês** |
 
-O preço do NAT Gateway retornado pela API não é específico de
-`eastus` (meter global) — confirmar na calculadora ao ativar o Modo B,
-mas a ordem de grandeza (~$0.045/h + $0.045/GB) é a mesma usada
-publicamente pela Azure para essa SKU há anos.
+O preço do NAT Gateway retornado pela API não é específico de região
+(meter global, mesmo valor em `brazilsouth` e `eastus`) — confirmar na
+calculadora ao ativar o Modo B, mas a ordem de grandeza (~$0.045/h +
+$0.045/GB) é a mesma usada publicamente pela Azure para essa SKU há anos.
+A IP pública estática também não muda de preço entre as duas regiões
+($0.005/hora).
 
 ## Comparação com alternativa: VM Linux pequena
 
@@ -61,15 +65,20 @@ usando uma `Standard_B1s` (1 vCPU, 1 GiB) como proxy de "menor VM viável":
 
 | Item | Preço | ~Mensal (730h) |
 |---|---|---|
-| VM `Standard_B1s` Linux | $0.0104/hora | ~$7.59 |
+| VM `Standard_B1s` Linux (Brazil South) | $0.0168/hora | ~$12.26 |
 | IP público estático (Standard) | $0.005/hora | ~$3.65 |
 | Disco gerenciado (estimado, não medido) | — | ~$1–2 |
-| **Total VM** | | **~$12–13/mês** |
+| **Total VM** | | **~$17–18/mês** |
+
+Nota: o B1s em Brazil South custa ~62% mais que em East US ($0.0168/h vs.
+$0.0104/h) — compute em geral é mais caro nessa região. O compute do
+Container Apps, porém, **não varia** entre as duas regiões
+($0.000024/vCPU-s e $0.000003/GiB-s iguais em ambas).
 
 ### Achado que vale destacar
 
-**O Modo B (NAT Gateway) sai mais caro que rodar em uma VM pequena** —
-~$36–38/mês contra ~$12–13/mês. A VM, porém, roda o tempo todo (sem
+**O Modo B (NAT Gateway) sai mais caro que rodar em uma VM pequena**, mesmo em Brazil South —
+~$36–38/mês contra ~$17–18/mês. A VM, porém, roda o tempo todo (sem
 `minReplicas: 0`), exige patch de SO e perde a vantagem de infraestrutura
 efêmera (subir/derrubar sob demanda) que motivou a escolha por Container
 Apps desde o início.
@@ -86,7 +95,7 @@ problema do IP sujo — a Container Apps + NAT Gateway.
 
 | | Modo A | Modo B (NAT Gateway) | VM pequena |
 |---|---|---|---|
-| Custo mensal estimado | ~$0 | ~$36–38 | ~$12–13 |
+| Custo mensal estimado | ~$0 | ~$36–38 | ~$17–18 |
 | IP de saída garantido limpo | Não | Sim | Sim |
 | Escala a zero | Sim | Sim | Não |
 | Infra efêmera (subir/derrubar) | Sim | Sim | Parcial (recria VM) |
