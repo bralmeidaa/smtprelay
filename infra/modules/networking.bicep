@@ -31,6 +31,19 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
         name: 'infra'
         properties: {
           addressPrefix: infraSubnetAddressPrefix
+          // Confirmed via a real deploy attempt (2026-09): the Container
+          // Apps environment's infra subnet must be delegated to this
+          // service, even for a workload-profiles/VNet environment -- the
+          // docs we based the "VNet integration" design on didn't call
+          // this out explicitly.
+          delegations: [
+            {
+              name: 'Microsoft.App.environments'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
     ]

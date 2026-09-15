@@ -59,6 +59,10 @@ resource infraSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-11-01' = {
   name: infraSubnetName
   properties: {
     addressPrefix: vnet.properties.subnets[0].properties.addressPrefix
+    // This resource redeclares the whole subnet (Bicep/ARM PUT semantics),
+    // so the delegation from networking.bicep has to be repeated here too
+    // -- otherwise attaching the NAT Gateway silently wipes it out.
+    delegations: vnet.properties.subnets[0].properties.delegations
     natGateway: {
       id: natGateway.id
     }

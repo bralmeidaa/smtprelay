@@ -60,11 +60,20 @@ TLS por certificado expirado:
 ## O deploy do Bicep falha com erro de ingress/VNet
 
 A arquitetura depende de um ambiente Container Apps "workload profiles"
-com VNet integrada (ver [architecture.md](architecture.md)) — esse é o
-ponto do template com maior chance de precisar de ajuste no primeiro
-deploy real, já que não foi possível validar contra uma assinatura Azure
-real durante a implementação (só compilação/lint local do Bicep). Se o
-deploy falhar:
+com VNet integrada (ver [architecture.md](architecture.md)). Um erro já
+apareceu e foi corrigido no primeiro deploy real:
+
+- **"The subnet of the environment must be delegated to the service
+  'Microsoft.App/environments'"** — a subnet de infraestrutura precisa de
+  delegação explícita pro serviço `Microsoft.App/environments`, mesmo num
+  ambiente workload-profiles/VNet (não estava claro na documentação usada
+  para desenhar a arquitetura). Corrigido em
+  `infra/modules/networking.bicep` (e replicado em
+  `infra/modules/nat-gateway.bicep`, que redeclara a mesma subnet ao
+  anexar o NAT Gateway — sem repetir a delegação lá, o Modo B apagaria
+  ela).
+
+Se aparecer outro erro de ingress/VNet:
 
 1. Conferir a versão da API (`Microsoft.App/managedEnvironments@...`,
    `Microsoft.App/containerApps@...`) contra a mais recente disponível na
@@ -72,8 +81,8 @@ deploy falhar:
 2. Conferir o tamanho mínimo exigido para a subnet de infraestrutura
    (`infraSubnetAddressPrefix` em `infra/modules/networking.bicep`) — a
    documentação da Azure já mudou esse requisito mais de uma vez.
-3. Reportar o erro exato — provavelmente é um ajuste pontual no Bicep, não
-   um problema de arquitetura.
+3. Reportar o erro exato — provavelmente é mais um ajuste pontual no
+   Bicep, não um problema de arquitetura.
 
 ## Container reinicia em loop
 
